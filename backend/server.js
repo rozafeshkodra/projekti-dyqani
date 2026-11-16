@@ -2,13 +2,55 @@ const express = require("express");
 
 const cron = require("node-cron");
 
+const bcrypt = require("bcryptjs");
+
+const jwt = require("jsonwebtoken");
+
 const { PrismaClient } = require("@prisma/client");
+const { JsonWebTokenError } = require("jsonwebtoken");
 
 const prisma = new PrismaClient();
 
 const app = express();
 
 app.use(express.json());
+
+//Autentifikimi
+
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers["authorization"];
+
+  const token = authHeader && authHeader.split(" ")[1];
+
+  if (!token) {
+    return res.status(401).json({
+      message: "Access denied! Token is required!",
+    });
+  }
+
+  jwt.verify(token, process.env.JWT_SECRET, (error, user) => {
+    if (error) {
+      return res.status(403).json({
+        message: "Invalid or expired token!",
+      });
+    }
+
+    req.user = user;
+    next();
+  });
+}
+
+function authorizeRole(role) {
+  return (req, res, next) => {
+    if (req.user.role !== role) {
+      return res.status(403).json({
+        message: "You do not have permission to perform this action!",
+      });
+    }
+
+    next();
+  };
+}
 
 app.post("/test", (req, res) => {
   console.log(req.body);
@@ -19,7 +61,421 @@ app.get("/", (req, res) => {
   res.send("Server is working!");
 });
 
-app.get("/products", async (req, res) => {
+//Register
+
+app.post("/register", async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+
+    if (!name || typeof name !== "string" || name.trim() === "") {
+      return res.status(400).json({
+        message: "Name is required",
+      });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!email || typeof email !== "string" || !emailRegex.test(email)) {
+      return res.status(400).json({
+        message: "Valid email is required!",
+      });
+    }
+
+    if (!password || typeof password !== "string" || password.length < 8) {
+      return res.status(400).json({
+        message: "Password must contain at least 8 characters!",
+      });
+    }
+
+    const existingUser = await prisma.user.findUnique({
+      where: {
+        email: email,
+      },
+    });
+
+    if (existingUser) {
+      return res.status(400).json({
+        message: "Email is already registered!",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const user = await prisma.user.create({
+      data: {
+        name: name.trim(),
+        email: email,
+        password: hashedPassword,
+        role: "EMPLOYEE",
+      },
+    });
+
+    res.status(201).json({
+      message: "User registered successfully!",
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    console.log(error);
+
+    res.status(500).json({
+      message: "Error while resgistering user!",
+    });
+  }
+});
+
+//Login
+
+app.post("/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!email || typeof email !== "string" || !emailRegex.test(email)) {
+      return res.status(400).json({
+        message: "Valid email is required!",
+      });
+    }
+
+    if (!password || typeof password !== "string") {
+      return res.status(400).json({
+        message: "Password is required!",
+      });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: {
+        email: email,
+      },
+    });
+
+    if (!user) {
+      return res.status(401).json({
+        message: "Invalid email or password!",
+      });
+    }
+
+    const passwordMatch = await bcrypt.compare(password, user.password);
+
+    if (!passwordMatch) {
+      return res.status(401).json({
+        message: "Invalid email or password!",
+      });
+    }
+
+    const token = jwt.sign(
+      {
+        id: user.id,
+        role: user.role,
+      },
+      process.env.JWT_SECRET,
+      {
+        expiresIn: "1h",
+      },
+    );
+
+    res.json({
+      message: "Login successful!",
+      token: token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    console.log(error);
+
+    res.status(500).json({
+      message: "Error while logging in!",
+    });
+  }
+});
+
+//Categories
+
+app.post(
+  "/categories",
+  authenticateToken,
+  authorizeRole("ADMIN"),
+  async (req, res) => {
+    try {
+      const { name } = req.body;
+
+      if (!name || name.trim() === "") {
+        return res.status(400).json({
+          message: "Category name is required!",
+        });
+      }
+
+      const category = await prisma.category.create({
+        data: {
+          name: name,
+        },
+      });
+
+      res.status(201).json(category);
+    } catch (error) {
+      console.log(error);
+
+      res.status(500).json({
+        message: "Error while inserting category!",
+      });
+    }
+  },
+);
+
+app.get("/categories", authenticateToken, async (req, res) => {
+  try {
+    const categories = await prisma.category.findMany();
+
+    res.json(categories);
+  } catch (error) {
+    console.log(error);
+
+    res.status(500).json({
+      message: "Error while fetching category!",
+    });
+  }
+});
+
+app.put(
+  "/categories/:id",
+  authenticateToken,
+  authorizeRole("ADMIN"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name } = req.body;
+
+      const category = await prisma.category.update({
+        where: {
+          id: Number(id),
+        },
+        data: {
+          name: name,
+        },
+      });
+
+      res.json(category);
+    } catch (error) {
+      console.log(error);
+
+      res.status(500).json({
+        message: "Error while updating category!",
+      });
+    }
+  },
+);
+
+app.delete(
+  "/categories/:id",
+  authenticateToken,
+  authorizeRole("ADMIN"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      await prisma.category.delete({
+        where: {
+          id: Number(id),
+        },
+      });
+
+      res.json({
+        message: "Category is deleted!",
+      });
+    } catch (error) {
+      console.log(error);
+
+      res.status(500).json({
+        message: "Error while deleting category!",
+      });
+    }
+  },
+);
+
+//Suppliers
+
+app.post(
+  "/suppliers",
+  authenticateToken,
+  authorizeRole("ADMIN"),
+  async (req, res) => {
+    try {
+      const { name, email, phone } = req.body;
+
+      if (!name || name.trim() === "") {
+        return res.status(400).json({
+          message: "Supplier name is required!",
+        });
+      }
+
+      const supplier = await prisma.supplier.create({
+        data: {
+          name: name,
+          email: email,
+          phone: phone,
+        },
+      });
+
+      res.status(201).json(supplier);
+    } catch (error) {
+      console.log(error);
+
+      res.status(500).json({
+        message: "Error while inserting supplier!",
+      });
+    }
+  },
+);
+
+app.get("/suppliers", authenticateToken, async (req, res) => {
+  try {
+    const suppliers = await prisma.supplier.findMany();
+
+    res.json(suppliers);
+  } catch (error) {
+    console.log(error);
+
+    res.status(500).json({
+      message: "Error while fetching supplier!",
+    });
+  }
+});
+
+app.put(
+  "/suppliers/:id",
+  authenticateToken,
+  authorizeRole("ADMIN"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, email, phone } = req.body;
+
+      const supplier = await prisma.supplier.update({
+        where: {
+          id: Number(id),
+        },
+        data: {
+          name: name,
+          email: email,
+          phone: phone,
+        },
+      });
+
+      res.json(supplier);
+    } catch (error) {
+      console.log(error);
+
+      res.status(500).json({
+        message: "Error while updating supplier!",
+      });
+    }
+  },
+);
+
+app.delete(
+  "/suppliers/:id",
+  authenticateToken,
+  authorizeRole("ADMIN"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      await prisma.supplier.delete({
+        where: {
+          id: Number(id),
+        },
+      });
+
+      res.json({
+        message: "Supplier is deleted!",
+      });
+    } catch (error) {
+      console.log(error);
+
+      res.status(500).json({
+        message: "Error while deleting supplier!",
+      });
+    }
+  },
+);
+
+//Products
+
+app.post(
+  "/products",
+  authenticateToken,
+  authorizeRole("ADMIN"),
+  async (req, res) => {
+    try {
+      const { name, categoryId, supplierId } = req.body;
+
+      if (!name || name.trim() === "") {
+        return res.status(400).json({
+          message: "Product name is required!",
+        });
+      }
+
+      if (!categoryId || isNaN(Number(categoryId))) {
+        return res.status(400).json({
+          message: "Valid category ID is required!",
+        });
+      }
+
+      if (!supplierId || isNaN(Number(supplierId))) {
+        return res.status(400).json({
+          message: "Valid supplier ID is required!",
+        });
+      }
+
+      const category = await prisma.category.findUnique({
+        where: { id: Number(categoryId) },
+      });
+
+      if (!category) {
+        return res.status(400).json({
+          message: "Category not found!",
+        });
+      }
+
+      const supplier = await prisma.supplier.findUnique({
+        where: { id: Number(supplierId) },
+      });
+
+      if (!supplier) {
+        return res.status(400).json({
+          message: "Supplier not found!",
+        });
+      }
+
+      const product = await prisma.product.create({
+        data: {
+          name: name,
+          categoryId: Number(categoryId),
+          supplierId: Number(supplierId),
+        },
+      });
+
+      res.status(201).json(product);
+    } catch (error) {
+      console.log(error);
+
+      res.status(500).json({
+        message: "Error while inserting product!",
+      });
+    }
+  },
+);
+
+app.get("/products", authenticateToken, async (req, res) => {
   try {
     const products = await prisma.product.findMany({
       include: {
@@ -37,243 +493,97 @@ app.get("/products", async (req, res) => {
   }
 });
 
-app.post("/categories", async (req, res) => {
-  try {
-    const { name } = req.body;
+app.put(
+  "/products/:id",
+  authenticateToken,
+  authorizeRole("ADMIN"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, categoryId, supplierId } = req.body;
 
-    const category = await prisma.category.create({
-      data: {
-        name: name,
-      },
-    });
+      const product = await prisma.product.update({
+        where: {
+          id: Number(id),
+        },
+        data: {
+          name: name,
+          categoryId: Number(categoryId),
+          supplierId: Number(supplierId),
+        },
+      });
 
-    res.status(201).json(category);
-  } catch (error) {
-    console.log(error);
+      res.json(product);
+    } catch (error) {
+      console.log(error);
 
-    res.status(500).json({
-      message: "Error while inserting category!",
-    });
-  }
-});
+      res.status(500).json({
+        message: "Error while updating product!",
+      });
+    }
+  },
+);
 
-app.get("/categories", async (req, res) => {
-  try {
-    const categories = await prisma.category.findMany();
+app.delete(
+  "/products/:id",
+  authenticateToken,
+  authorizeRole("ADMIN"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
 
-    res.json(categories);
-  } catch (error) {
-    console.log(error);
+      await prisma.product.delete({
+        where: {
+          id: Number(id),
+        },
+      });
 
-    res.status(500).json({
-      message: "Error while fetching category!",
-    });
-  }
-});
+      res.json({
+        message: "Product is deleted!",
+      });
+    } catch (error) {
+      console.log(error);
 
-app.put("/categories/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { name } = req.body;
+      res.status(500).json({
+        message: "Error while deleting product!",
+      });
+    }
+  },
+);
 
-    const category = await prisma.category.update({
-      where: {
-        id: Number(id),
-      },
-      data: {
-        name: name,
-      },
-    });
+//Stock Batches
 
-    res.json(category);
-  } catch (error) {
-    console.log(error);
-
-    res.status(500).json({
-      message: "Error while updating category!",
-    });
-  }
-});
-
-app.delete("/categories/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    await prisma.category.delete({
-      where: {
-        id: Number(id),
-      },
-    });
-
-    res.json({
-      message: "Category is deleted!",
-    });
-  } catch (error) {
-    console.log(error);
-
-    res.status(500).json({
-      message: "Error while deleting category!",
-    });
-  }
-});
-
-app.post("/suppliers", async (req, res) => {
-  try {
-    const { name, email, phone } = req.body;
-
-    const supplier = await prisma.supplier.create({
-      data: {
-        name: name,
-        email: email,
-        phone: phone,
-      },
-    });
-
-    res.status(201).json(supplier);
-  } catch (error) {
-    console.log(error);
-
-    res.status(500).json({
-      message: "Error while inserting supplier!",
-    });
-  }
-});
-
-app.get("/suppliers", async (req, res) => {
-  try {
-    const suppliers = await prisma.supplier.findMany();
-
-    res.json(suppliers);
-  } catch (error) {
-    console.log(error);
-
-    res.status(500).json({
-      message: "Error while fetching supplier!",
-    });
-  }
-});
-
-app.put("/suppliers/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { name, email, phone } = req.body;
-
-    const supplier = await prisma.supplier.update({
-      where: {
-        id: Number(id),
-      },
-      data: {
-        name: name,
-        email: email,
-        phone: phone,
-      },
-    });
-
-    res.json(supplier);
-  } catch (error) {
-    console.log(error);
-
-    res.status(500).json({
-      message: "Error while updating supplier!",
-    });
-  }
-});
-
-app.delete("/suppliers/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    await prisma.supplier.delete({
-      where: {
-        id: Number(id),
-      },
-    });
-
-    res.json({
-      message: "Supplier is deleted!",
-    });
-  } catch (error) {
-    console.log(error);
-
-    res.status(500).json({
-      message: "Error while deleting supplier!",
-    });
-  }
-});
-
-app.post("/products", async (req, res) => {
-  try {
-    const { name, categoryId, supplierId } = req.body;
-
-    const product = await prisma.product.create({
-      data: {
-        name: name,
-        categoryId: Number(categoryId),
-        supplierId: Number(supplierId),
-      },
-    });
-
-    res.status(201).json(product);
-  } catch (error) {
-    console.log(error);
-
-    res.status(500).json({
-      message: "Error while inserting product!",
-    });
-  }
-});
-
-app.put("/products/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { name, categoryId, supplierId } = req.body;
-
-    const product = await prisma.product.update({
-      where: {
-        id: Number(id),
-      },
-      data: {
-        name: name,
-        categoryId: Number(categoryId),
-        supplierId: Number(supplierId),
-      },
-    });
-
-    res.json(product);
-  } catch (error) {
-    console.log(error);
-
-    res.status(500).json({
-      message: "Error while updating product!",
-    });
-  }
-});
-
-app.delete("/products/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    await prisma.product.delete({
-      where: {
-        id: Number(id),
-      },
-    });
-
-    res.json({
-      message: "Product is deleted!",
-    });
-  } catch (error) {
-    console.log(error);
-
-    res.status(500).json({
-      message: "Error while deleting product!",
-    });
-  }
-});
-
-app.post("/stock-batches", async (req, res) => {
+app.post("/stock-batches", authenticateToken, async (req, res) => {
   try {
     const { productId, quantity, expiryDate } = req.body;
+
+    if (!productId || isNaN(Number(productId))) {
+      return res.status(400).json({
+        message: "Valid product ID is required!",
+      });
+    }
+
+    const product = await prisma.product.findUnique({
+      where: { id: Number(productId) },
+    });
+
+    if (!product) {
+      return res.status(400).json({
+        message: "Product not found!",
+      });
+    }
+
+    if (!quantity || isNaN(Number(quantity)) || Number(quantity) <= 0) {
+      return res.status(400).json({
+        message: "Valid quantity is required!",
+      });
+    }
+
+    if (!expiryDate || isNaN(Date.parse(expiryDate))) {
+      return res.status(400).json({
+        message: "Valid expiry date is required!",
+      });
+    }
 
     const stockBatch = await prisma.stockBatch.create({
       data: {
@@ -293,7 +603,7 @@ app.post("/stock-batches", async (req, res) => {
   }
 });
 
-app.get("/stock-batches", async (req, res) => {
+app.get("/stock-batches", authenticateToken, async (req, res) => {
   try {
     const stockBatches = await prisma.stockBatch.findMany({
       include: {
@@ -312,76 +622,115 @@ app.get("/stock-batches", async (req, res) => {
   }
 });
 
-app.put("/stock-batches/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { productId, quantity, expiryDate } = req.body;
+app.put(
+  "/stock-batches/:id",
+  authenticateToken,
+  authorizeRole("ADMIN"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { productId, quantity, expiryDate } = req.body;
 
-    const stockBatch = await prisma.stockBatch.update({
-      where: {
-        id: Number(id),
-      },
-      data: {
-        productId: Number(productId),
-        quantity: Number(quantity),
-        expiryDate: new Date(expiryDate),
-      },
-    });
+      const stockBatch = await prisma.stockBatch.update({
+        where: {
+          id: Number(id),
+        },
+        data: {
+          productId: Number(productId),
+          quantity: Number(quantity),
+          expiryDate: new Date(expiryDate),
+        },
+      });
 
-    res.json(stockBatch);
-  } catch (error) {
-    console.log(error);
+      res.json(stockBatch);
+    } catch (error) {
+      console.log(error);
 
-    res.status(500).json({
-      message: "Error while updating stock batch!",
-    });
-  }
-});
+      res.status(500).json({
+        message: "Error while updating stock batch!",
+      });
+    }
+  },
+);
 
-app.delete("/stock-batches/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
+app.delete(
+  "/stock-batches/:id",
+  authenticateToken,
+  authorizeRole("ADMIN"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
 
-    await prisma.stockBatch.delete({
-      where: {
-        id: Number(id),
-      },
-    });
+      await prisma.stockBatch.delete({
+        where: {
+          id: Number(id),
+        },
+      });
 
-    res.json({
-      message: "Stock batch is deleted!",
-    });
-  } catch (error) {
-    console.log(error);
+      res.json({
+        message: "Stock batch is deleted!",
+      });
+    } catch (error) {
+      console.log(error);
 
-    res.status(500).json({
-      message: "Error while deleting stock batch!",
-    });
-  }
-});
+      res.status(500).json({
+        message: "Error while deleting stock batch!",
+      });
+    }
+  },
+);
 
-app.post("/expiry-alerts", async (req, res) => {
-  try {
-    const { stockBatchId, message } = req.body;
+//Expiry Alerts
 
-    const alert = await prisma.expiryAlert.create({
-      data: {
-        stockBatchId: Number(stockBatchId),
-        message: message,
-      },
-    });
+app.post(
+  "/expiry-alerts",
+  authenticateToken,
+  authorizeRole("ADMIN"),
+  async (req, res) => {
+    try {
+      const { stockBatchId, message } = req.body;
 
-    res.status(201).json(alert);
-  } catch (error) {
-    console.log(error);
+      if (!stockBatchId || isNaN(Number(stockBatchId))) {
+        return res.status(400).json({
+          message: "Valid stock batch ID is required!",
+        });
+      }
 
-    res.status(500).json({
-      message: "Error while inserting expiry alert!",
-    });
-  }
-});
+      const stockBatch = await prisma.stockBatch.findUnique({
+        where: { id: Number(stockBatchId) },
+      });
 
-app.get("/expiry-alerts", async (req, res) => {
+      if (!stockBatch) {
+        return res.status(400).json({
+          message: "Stock batch not found!",
+        });
+      }
+
+      if (!message || message.trim() === "") {
+        return res.status(400).json({
+          message: "Alert message is required!",
+        });
+      }
+
+      const alert = await prisma.expiryAlert.create({
+        data: {
+          stockBatchId: Number(stockBatchId),
+          message: message,
+        },
+      });
+
+      res.status(201).json(alert);
+    } catch (error) {
+      console.log(error);
+
+      res.status(500).json({
+        message: "Error while inserting expiry alert!",
+      });
+    }
+  },
+);
+
+app.get("/expiry-alerts", authenticateToken, async (req, res) => {
   try {
     const alerts = await prisma.expiryAlert.findMany({
       include: {
@@ -403,17 +752,22 @@ app.get("/expiry-alerts", async (req, res) => {
   }
 });
 
-app.put("/expiry-alerts/:id", async (req, res) => {
+app.put("/expiry-alerts/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { message, status } = req.body;
+    const { status } = req.body;
+
+    if (!status || !["UNREAD", "READ"].includes(status)) {
+      return res.status(400).json({
+        message: "Valid alert status is required!",
+      });
+    }
 
     const alert = await prisma.expiryAlert.update({
       where: {
         id: Number(id),
       },
       data: {
-        message: message,
         status: status,
       },
     });
@@ -428,27 +782,32 @@ app.put("/expiry-alerts/:id", async (req, res) => {
   }
 });
 
-app.delete("/expiry-alerts/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
+app.delete(
+  "/expiry-alerts/:id",
+  authenticateToken,
+  authorizeRole("ADMIN"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
 
-    await prisma.expiryAlert.delete({
-      where: {
-        id: Number(id),
-      },
-    });
+      await prisma.expiryAlert.delete({
+        where: {
+          id: Number(id),
+        },
+      });
 
-    res.json({
-      message: "Expiry alert is deleted!",
-    });
-  } catch (error) {
-    console.log(error);
+      res.json({
+        message: "Expiry alert is deleted!",
+      });
+    } catch (error) {
+      console.log(error);
 
-    res.status(500).json({
-      message: "Error while deleting expiry alert!",
-    });
-  }
-});
+      res.status(500).json({
+        message: "Error while deleting expiry alert!",
+      });
+    }
+  },
+);
 
 const PORT = 5000;
 
