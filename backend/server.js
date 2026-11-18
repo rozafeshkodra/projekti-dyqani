@@ -1,4 +1,10 @@
+require("dotenv").config();
+
 const express = require("express");
+
+const rateLimit = require("express-rate-limit");
+
+const helmet = require("helmet");
 
 const cron = require("node-cron");
 
@@ -13,7 +19,19 @@ const prisma = new PrismaClient();
 
 const app = express();
 
-app.use(express.json());
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: {
+    message: "Too many login attempts. Please try again after 15 minutes!",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use(helmet());
+
+app.use(express.json({ limit: "10kb" }));
 
 //Autentifikimi
 
@@ -130,7 +148,7 @@ app.post("/register", async (req, res) => {
 
 //Login
 
-app.post("/login", async (req, res) => {
+app.post("/login", loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -216,7 +234,7 @@ app.post(
 
       const category = await prisma.category.create({
         data: {
-          name: name,
+          name: name.trim(),
         },
       });
 
@@ -254,12 +272,24 @@ app.put(
       const { id } = req.params;
       const { name } = req.body;
 
+      if (isNaN(Number(id)) || Number(id) <= 0) {
+        return res.status(400).json({
+          message: "Valid category ID is required!",
+        });
+      }
+
+      if (!name || name.trim() === "") {
+        return res.status(400).json({
+          message: "Category name is required!",
+        });
+      }
+
       const category = await prisma.category.update({
         where: {
           id: Number(id),
         },
         data: {
-          name: name,
+          name: name.trim(),
         },
       });
 
@@ -317,9 +347,17 @@ app.post(
         });
       }
 
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+      if (email && !emailRegex.test(email)) {
+        return res.status(400).json({
+          message: "Valid email address is required!",
+        });
+      }
+
       const supplier = await prisma.supplier.create({
         data: {
-          name: name,
+          name: name.trim(),
           email: email,
           phone: phone,
         },
@@ -359,12 +397,32 @@ app.put(
       const { id } = req.params;
       const { name, email, phone } = req.body;
 
+      if (isNaN(Number(id)) || Number(id) <= 0) {
+        return res.status(400).json({
+          message: "Valid supplier ID is required!",
+        });
+      }
+
+      if (!name || name.trim() === "") {
+        return res.status(400).json({
+          message: "Supplier name is required!",
+        });
+      }
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+      if (email && !emailRegex.test(email)) {
+        return res.status(400).json({
+          message: "Valid email address is required!",
+        });
+      }
+
       const supplier = await prisma.supplier.update({
         where: {
           id: Number(id),
         },
         data: {
-          name: name,
+          name: name.trim(),
           email: email,
           phone: phone,
         },
@@ -502,12 +560,56 @@ app.put(
       const { id } = req.params;
       const { name, categoryId, supplierId } = req.body;
 
+      if (isNaN(Number(id)) || Number(id) <= 0) {
+        return res.status(400).json({
+          message: "Valid product ID is required!",
+        });
+      }
+
+      if (!name || name.trim() === "") {
+        return res.status(400).json({
+          message: "Product name is required!",
+        });
+      }
+
+      if (!categoryId || isNaN(Number(categoryId)) || Number(categoryId) <= 0) {
+        return res.status(400).json({
+          message: "Valid category ID is required!",
+        });
+      }
+
+      if (!supplierId || isNaN(Number(supplierId)) || Number(supplierId) <= 0) {
+        return res.status(400).json({
+          message: "Valid supplier ID is required!",
+        });
+      }
+
+      const category = await prisma.category.findUnique({
+        where: { id: Number(categoryId) },
+      });
+
+      if (!category) {
+        return res.status(400).json({
+          message: "Category not found!",
+        });
+      }
+
+      const supplier = await prisma.supplier.findUnique({
+        where: { id: Number(supplierId) },
+      });
+
+      if (!supplier) {
+        return res.status(400).json({
+          message: "Supplier not found!",
+        });
+      }
+
       const product = await prisma.product.update({
         where: {
           id: Number(id),
         },
         data: {
-          name: name,
+          name: name.trim(),
           categoryId: Number(categoryId),
           supplierId: Number(supplierId),
         },
@@ -553,55 +655,60 @@ app.delete(
 
 //Stock Batches
 
-app.post("/stock-batches", authenticateToken, async (req, res) => {
-  try {
-    const { productId, quantity, expiryDate } = req.body;
+app.post(
+  "/stock-batches",
+  authenticateToken,
+  authorizeRole("ADMIN"),
+  async (req, res) => {
+    try {
+      const { productId, quantity, expiryDate } = req.body;
 
-    if (!productId || isNaN(Number(productId))) {
-      return res.status(400).json({
-        message: "Valid product ID is required!",
+      if (!productId || isNaN(Number(productId))) {
+        return res.status(400).json({
+          message: "Valid product ID is required!",
+        });
+      }
+
+      const product = await prisma.product.findUnique({
+        where: { id: Number(productId) },
+      });
+
+      if (!product) {
+        return res.status(400).json({
+          message: "Product not found!",
+        });
+      }
+
+      if (!quantity || isNaN(Number(quantity)) || Number(quantity) <= 0) {
+        return res.status(400).json({
+          message: "Valid quantity is required!",
+        });
+      }
+
+      if (!expiryDate || isNaN(Date.parse(expiryDate))) {
+        return res.status(400).json({
+          message: "Valid expiry date is required!",
+        });
+      }
+
+      const stockBatch = await prisma.stockBatch.create({
+        data: {
+          productId: Number(productId),
+          quantity: Number(quantity),
+          expiryDate: new Date(expiryDate),
+        },
+      });
+
+      res.status(201).json(stockBatch);
+    } catch (error) {
+      console.log(error);
+
+      res.status(500).json({
+        message: "Error while inserting stock batch!",
       });
     }
-
-    const product = await prisma.product.findUnique({
-      where: { id: Number(productId) },
-    });
-
-    if (!product) {
-      return res.status(400).json({
-        message: "Product not found!",
-      });
-    }
-
-    if (!quantity || isNaN(Number(quantity)) || Number(quantity) <= 0) {
-      return res.status(400).json({
-        message: "Valid quantity is required!",
-      });
-    }
-
-    if (!expiryDate || isNaN(Date.parse(expiryDate))) {
-      return res.status(400).json({
-        message: "Valid expiry date is required!",
-      });
-    }
-
-    const stockBatch = await prisma.stockBatch.create({
-      data: {
-        productId: Number(productId),
-        quantity: Number(quantity),
-        expiryDate: new Date(expiryDate),
-      },
-    });
-
-    res.status(201).json(stockBatch);
-  } catch (error) {
-    console.log(error);
-
-    res.status(500).json({
-      message: "Error while inserting stock batch!",
-    });
-  }
-});
+  },
+);
 
 app.get("/stock-batches", authenticateToken, async (req, res) => {
   try {
@@ -630,6 +737,46 @@ app.put(
     try {
       const { id } = req.params;
       const { productId, quantity, expiryDate } = req.body;
+
+      if (isNaN(Number(id)) || Number(id) <= 0) {
+        return res.status(400).json({
+          message: "Valid stock batch ID is required!",
+        });
+      }
+
+      if (!productId || isNaN(Number(productId)) || Number(productId) <= 0) {
+        return res.status(400).json({
+          message: "Valid product ID is required!",
+        });
+      }
+
+      const product = await prisma.product.findUnique({
+        where: { id: Number(productId) },
+      });
+
+      if (!product) {
+        return res.status(400).json({
+          message: "Product not found!",
+        });
+      }
+
+      if (
+        quantity === undefined ||
+        quantity === null ||
+        quantity === "" ||
+        !Number.isInteger(Number(quantity)) ||
+        Number(quantity) <= 0
+      ) {
+        return res.status(400).json({
+          message: "Valid quantity is required!",
+        });
+      }
+
+      if (!expiryDate || isNaN(Date.parse(expiryDate))) {
+        return res.status(400).json({
+          message: "Valid expiry date is required!",
+        });
+      }
 
       const stockBatch = await prisma.stockBatch.update({
         where: {
@@ -690,7 +837,11 @@ app.post(
     try {
       const { stockBatchId, message } = req.body;
 
-      if (!stockBatchId || isNaN(Number(stockBatchId))) {
+      if (
+        !stockBatchId ||
+        isNaN(Number(stockBatchId)) ||
+        Number(stockBatchId) <= 0
+      ) {
         return res.status(400).json({
           message: "Valid stock batch ID is required!",
         });
@@ -715,7 +866,7 @@ app.post(
       const alert = await prisma.expiryAlert.create({
         data: {
           stockBatchId: Number(stockBatchId),
-          message: message,
+          message: message.trim(),
         },
       });
 
@@ -757,6 +908,12 @@ app.put("/expiry-alerts/:id", authenticateToken, async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
+    if (isNaN(Number(id)) || Number(id) <= 0) {
+      return res.status(400).json({
+        message: "Valid alert ID is required!",
+      });
+    }
+
     if (!status || !["UNREAD", "READ"].includes(status)) {
       return res.status(400).json({
         message: "Valid alert status is required!",
@@ -790,6 +947,12 @@ app.delete(
     try {
       const { id } = req.params;
 
+      if (isNaN(Number(id)) || Number(id) <= 0) {
+        return res.status(400).json({
+          message: "Valid alert ID is required!",
+        });
+      }
+
       await prisma.expiryAlert.delete({
         where: {
           id: Number(id),
@@ -809,7 +972,7 @@ app.delete(
   },
 );
 
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 
 async function checkExpiryDates() {
   const today = new Date();
@@ -857,22 +1020,27 @@ async function checkExpiryDates() {
   return alerts;
 }
 
-app.get("/check-expiry", async (req, res) => {
-  try {
-    const alerts = await checkExpiryDates();
+app.post(
+  "/check-expiry",
+  authenticateToken,
+  authorizeRole("ADMIN"),
+  async (req, res) => {
+    try {
+      const alerts = await checkExpiryDates();
 
-    res.json({
-      message: "Expiry date check completed!",
-      alerts: alerts,
-    });
-  } catch (error) {
-    console.log(error);
+      res.json({
+        message: "Expiry date check completed!",
+        alerts: alerts,
+      });
+    } catch (error) {
+      console.log(error);
 
-    res.status(500).json({
-      message: "Error while checking expiry dates!",
-    });
-  }
-});
+      res.status(500).json({
+        message: "Error while checking expiry dates!",
+      });
+    }
+  },
+);
 
 cron.schedule(
   "0 8 * * *",
@@ -892,6 +1060,20 @@ cron.schedule(
     timezone: "Europe/Belgrade",
   },
 );
+
+app.use((req, res) => {
+  res.status(404).json({
+    message: "Endpoint not found!",
+  });
+});
+
+app.use((error, req, res, next) => {
+  console.log(error);
+
+  res.status(500).json({
+    message: "Internal server error!",
+  });
+});
 
 app.listen(PORT, () => {
   console.log("Server is working on port " + PORT);

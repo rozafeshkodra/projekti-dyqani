@@ -1,0 +1,128 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Arial, sans-serif;
+  background-color: #f4f7f5;
+  color: #26352d;
+}
+
+.login-container,
+.register-container {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+}
+
+.login-form,
+.register-form {
+  width: 100%;
+  max-width: 420px;
+  background-color: white;
+  padding: 40px;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
+.login-form h1,
+.register-form h1 {
+  text-align: center;
+  font-size: 24px;
+  color: #285943;
+  margin-bottom: 12px;
+}
+
+.login-form h2,
+.register-form h2 {
+  text-align: center;
+  font-size: 20px;
+  margin-bottom: 30px;
+}
+
+.login-form label,
+.register-form label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: bold;
+  font-size: 14px;
+}
+
+.login-form input,
+.register-form input {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 20px;
+  border: 1px solid #d1d9d3;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.login-form input:focus,
+.register-form input:focus {
+  outline: none;
+  border-color: #285943;
+}
+
+.login-form button,
+.register-form button {
+  width: 100%;
+  padding: 13px;
+  background-color: #285943;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.login-form button:hover,
+.register-form button:hover {
+  background-color: #1d4231;
+}
+
+.login-form button:disabled,
+.register-form button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.login-form p,
+.register-form p {
+  text-align: center;
+  margin-top: 20px;
+  font-size: 14px;
+}
+
+.login-form a,
+.register-form a {
+  color: #285943;
+  font-weight: bold;
+  text-decoration: none;
+}
+
+.login-form a:hover,
+.register-form a:hover {
+  text-decoration: underline;
+}
+
+.error-message {
+  color: #c0392b;
+}
+
+@media (max-width: 480px) {
+  .login-form,
+  .register-form {
+    padding: 25px 20px;
+  }
+
+  .login-form h1,
+  .register-form h1 {
+    font-size: 21px;
+  }
+}
