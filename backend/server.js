@@ -12,12 +12,20 @@ const bcrypt = require("bcryptjs");
 
 const jwt = require("jsonwebtoken");
 
+const cors = require("cors");
+
 const { PrismaClient } = require("@prisma/client");
 const { JsonWebTokenError } = require("jsonwebtoken");
 
 const prisma = new PrismaClient();
 
 const app = express();
+
+app.use(
+  cors({
+    origin: "http://localhost:5173",
+  }),
+);
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
