@@ -407,3 +407,42 @@ body {
     grid-column: 1;
   }
 }
+
+.status-btn,
+.delete-btn {
+  padding: 9px 14px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  margin: 3px;
+  transition: 0.2s;
+}
+
+.mark-read {
+  background-color: #d1fae5;
+  color: #047857;
+}
+
+.mark-read:hover {
+  background-color: #a7f3d0;
+}
+
+.mark-unread {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+.mark-unread:hover {
+  background-color: #fde68a;
+}
+
+.delete-btn {
+  background-color: #fee2e2;
+  color: #b91c1c;
+}
+
+.delete-btn:hover {
+  background-color: #fecaca;
+}

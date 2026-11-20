@@ -250,6 +250,12 @@ app.post(
     } catch (error) {
       console.log(error);
 
+      if (error.code === "P2002") {
+        return res.status(400).json({
+          message: "Category already exists!",
+        });
+      }
+
       res.status(500).json({
         message: "Error while inserting category!",
       });

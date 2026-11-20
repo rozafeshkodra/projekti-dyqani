@@ -87,9 +87,9 @@ function Products() {
         <nav>
           <a href="/dashboard">Dashboard</a>
           <a href="/products">Products</a>
-          <a href="#">Categories</a>
-          <a href="#">Suppliers</a>
-          <a href="#">Expiry Management</a>
+          <a href="/categories">Categories</a>
+          <a href="/suppliers">Suppliers</a>
+          <a href="/expiry-management">Expiry Management</a>
         </nav>
 
         <button onClick={handleLogout}>Logout</button>
