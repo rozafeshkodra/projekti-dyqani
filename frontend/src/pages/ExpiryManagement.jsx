@@ -14,6 +14,7 @@ function ExpiryManagement() {
 
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const [editId, setEditId] = useState(null);
 
   useEffect(() => {
     fetchAlerts();
@@ -92,6 +93,36 @@ function ExpiryManagement() {
     }
   };
 
+  const handleEditAlert = (alert) => {
+    setEditId(alert.id);
+    setStockBatchId(alert.stockBatchId);
+    setAlertMessage(alert.message);
+    setShowForm(true);
+  };
+
+  const handleUpdateAlert = async (e) => {
+    e.preventDefault();
+
+    try {
+      await API.put(`/expiry-alerts/${editId}`, {
+        stockBatchId: Number(stockBatchId),
+        message: alertMessage,
+      });
+
+      setStockBatchId("");
+      setAlertMessage("");
+      setEditId(null);
+      setShowForm(false);
+      setMessage("");
+
+      fetchAlerts();
+    } catch (error) {
+      setMessage(
+        error.response?.data?.message || "Error while updating expiry alert!",
+      );
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
@@ -109,6 +140,7 @@ function ExpiryManagement() {
           <a href="/products">Products</a>
           <a href="/categories">Categories</a>
           <a href="/suppliers">Suppliers</a>
+          <a href="/stock-batches">Stock Batches</a>
           <a href="/expiry-management">Expiry Management</a>
         </nav>
 
@@ -122,14 +154,22 @@ function ExpiryManagement() {
 
         <button
           className="add-product-btn"
-          onClick={() => setShowForm(!showForm)}
+          onClick={() => {
+            setEditId(null);
+            setStockBatchId("");
+            setAlertMessage("");
+            setShowForm(!showForm);
+          }}
         >
           + Add Expiry Alert
         </button>
 
         {showForm && (
-          <form className="product-form" onSubmit={handleAddAlert}>
-            <h2>Add New Expiry Alert</h2>
+          <form
+            className="product-form"
+            onSubmit={editId ? handleUpdateAlert : handleAddAlert}
+          >
+            <h2>{editId ? "Edit Expiry Alert" : "Add New Expiry Alert"}</h2>
 
             <select
               value={stockBatchId}
@@ -153,7 +193,9 @@ function ExpiryManagement() {
               required
             />
 
-            <button type="submit">Save Alert</button>
+            <button type="submit">
+              {editId ? "Update Alert" : "Save Alert"}
+            </button>
           </form>
         )}
 
@@ -204,6 +246,8 @@ function ExpiryManagement() {
                         ? "Mark as Read"
                         : "Mark as Unread"}
                     </button>
+
+                    <button onClick={() => handleEditAlert(alert)}>Edit</button>
 
                     <button
                       className="delete-btn"

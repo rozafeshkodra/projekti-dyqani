@@ -17,6 +17,8 @@ function Products() {
   const [categoryId, setCategoryId] = useState("");
   const [supplierId, setSupplierId] = useState("");
 
+  const [editId, setEditId] = useState(null);
+
   useEffect(() => {
     fetchProducts();
     fetchFormData();
@@ -72,6 +74,52 @@ function Products() {
     }
   };
 
+  const handleUpdateProduct = async (e) => {
+    e.preventDefault();
+
+    try {
+      await API.put(`/products/${editId}`, {
+        name,
+        categoryId: Number(categoryId),
+        supplierId: Number(supplierId),
+      });
+
+      setName("");
+      setCategoryId("");
+      setSupplierId("");
+      setEditId(null);
+      setShowForm(false);
+      setMessage("");
+
+      fetchProducts();
+    } catch (error) {
+      setMessage(
+        error.response?.data?.message || "Error while updating product!",
+      );
+    }
+  };
+
+  const handleEditProduct = (product) => {
+    setEditId(product.id);
+    setName(product.name);
+    setCategoryId(product.categoryId);
+    setSupplierId(product.supplierId);
+    setShowForm(true);
+  };
+
+  const handleDeleteProduct = async (id) => {
+    try {
+      await API.delete(`/products/${id}`);
+
+      setMessage("");
+      fetchProducts();
+    } catch (error) {
+      setMessage(
+        error.response?.data?.message || "Error while deleting product!",
+      );
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
@@ -89,6 +137,7 @@ function Products() {
           <a href="/products">Products</a>
           <a href="/categories">Categories</a>
           <a href="/suppliers">Suppliers</a>
+          <a href="/stock-batches">Stock Batches</a>
           <a href="/expiry-management">Expiry Management</a>
         </nav>
 
@@ -102,14 +151,23 @@ function Products() {
 
         <button
           className="add-product-btn"
-          onClick={() => setShowForm(!showForm)}
+          onClick={() => {
+            setEditId(null);
+            setName("");
+            setCategoryId("");
+            setSupplierId("");
+            setShowForm(!showForm);
+          }}
         >
           + Add Product
         </button>
 
         {showForm && (
-          <form className="product-form" onSubmit={handleAddProduct}>
-            <h2>Add New Product</h2>
+          <form
+            className="product-form"
+            onSubmit={editId ? handleUpdateProduct : handleAddProduct}
+          >
+            <h2>{editId ? "Edit Product" : "Add New Product"}</h2>
 
             <input
               type="text"
@@ -147,7 +205,9 @@ function Products() {
               ))}
             </select>
 
-            <button type="submit">Save Product</button>
+            <button type="submit">
+              {editId ? "Update Product" : "Save Product"}
+            </button>
           </form>
         )}
 
@@ -163,6 +223,7 @@ function Products() {
                 <th>Name</th>
                 <th>Category</th>
                 <th>Supplier</th>
+                <th>Actions</th>
               </tr>
             </thead>
 
@@ -173,6 +234,14 @@ function Products() {
                   <td>{product.name}</td>
                   <td>{product.category?.name}</td>
                   <td>{product.supplier?.name}</td>
+                  <td>
+                    <button onClick={() => handleEditProduct(product)}>
+                      Edit
+                    </button>
+                    <button onClick={() => handleDeleteProduct(product.id)}>
+                      Delete
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

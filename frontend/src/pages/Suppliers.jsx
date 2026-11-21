@@ -7,13 +7,15 @@ function Suppliers() {
 
   const [suppliers, setSuppliers] = useState([]);
 
-  const [loading, setLoading] = useState("");
-  const [message, setMessage] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
   const [showForm, setShowForm] = useState(false);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+
+  const [editId, setEditId] = useState(null);
 
   useEffect(() => {
     fetchSuppliers();
@@ -57,6 +59,52 @@ function Suppliers() {
     }
   };
 
+  const handleUpdateSupplier = async (e) => {
+    e.preventDefault();
+
+    try {
+      await API.put(`/suppliers/${editId}`, {
+        name,
+        email,
+        phone,
+      });
+
+      setName("");
+      setEmail("");
+      setPhone("");
+      setEditId(null);
+      setShowForm(false);
+      setMessage("");
+
+      fetchSuppliers();
+    } catch (error) {
+      setMessage(
+        error.response?.data?.message || "Error while updating supplier!",
+      );
+    }
+  };
+
+  const handleEditSupplier = (supplier) => {
+    setEditId(supplier.id);
+    setName(supplier.name);
+    setEmail(supplier.email || "");
+    setPhone(supplier.phone || "");
+    setShowForm(true);
+  };
+
+  const handleDeleteSupplier = async (id) => {
+    try {
+      await API.delete(`/suppliers/${id}`);
+
+      setMessage("");
+      fetchSuppliers();
+    } catch (error) {
+      setMessage(
+        error.response?.data?.message || "Error while deleting supplier!",
+      );
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
@@ -74,6 +122,7 @@ function Suppliers() {
           <a href="/products">Products</a>
           <a href="/categories">Categories</a>
           <a href="/suppliers">Suppliers</a>
+          <a href="/stock-batches">Stock Batches</a>
           <a href="/expiry-management">Expiry Management</a>
         </nav>
 
@@ -87,14 +136,23 @@ function Suppliers() {
 
         <button
           className="add-product-btn"
-          onClick={() => setShowForm(!showForm)}
+          onClick={() => {
+            setEditId(null);
+            setName("");
+            setEmail("");
+            setPhone("");
+            setShowForm(!showForm);
+          }}
         >
           + Add Supplier
         </button>
 
         {showForm && (
-          <form className="product-form" onSubmit={handleAddSupplier}>
-            <h2>Add New Supplier</h2>
+          <form
+            className="product-form"
+            onSubmit={editId ? handleUpdateSupplier : handleAddSupplier}
+          >
+            <h2>{editId ? "Edit Supplier" : "Add New Supplier"}</h2>
 
             <input
               type="text"
@@ -118,7 +176,9 @@ function Suppliers() {
               onChange={(e) => setPhone(e.target.value)}
             />
 
-            <button type="submit">Save Supplier</button>
+            <button type="submit">
+              {editId ? "Update Supplier" : "Save Supplier"}
+            </button>
           </form>
         )}
 
@@ -134,6 +194,7 @@ function Suppliers() {
                 <th>Name</th>
                 <th>Email</th>
                 <th>Phone</th>
+                <th>Actions</th>
               </tr>
             </thead>
 
@@ -144,6 +205,15 @@ function Suppliers() {
                   <td>{supplier.name}</td>
                   <td>{supplier.email || "-"}</td>
                   <td>{supplier.phone || "-"}</td>
+                  <td>
+                    <button onClick={() => handleEditSupplier(supplier)}>
+                      Edit
+                    </button>
+
+                    <button onClick={() => handleDeleteSupplier(supplier.id)}>
+                      Delete
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

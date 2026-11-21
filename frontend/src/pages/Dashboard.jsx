@@ -34,6 +34,7 @@ function Dashboard() {
           <a href="products">Products</a>
           <a href="/categories">Categories</a>
           <a href="/suppliers">Suppliers</a>
+          <a href="/stock-batches">Stock Batches</a>
           <a href="/expiry-management">Expiry Management</a>
         </nav>
 

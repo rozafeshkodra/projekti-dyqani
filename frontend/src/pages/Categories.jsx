@@ -13,6 +13,8 @@ function Categories() {
 
   const [name, setName] = useState("");
 
+  const [editId, setEditId] = useState(null);
+
   useEffect(() => {
     fetchCategories();
   }, []);
@@ -51,6 +53,46 @@ function Categories() {
     }
   };
 
+  const handleUpdateCategory = async (e) => {
+    e.preventDefault();
+
+    try {
+      await API.put(`/categories/${editId}`, {
+        name,
+      });
+
+      setName("");
+      setEditId(null);
+      setShowForm(false);
+      setMessage("");
+
+      fetchCategories();
+    } catch (error) {
+      setMessage(
+        error.response?.data?.message || "Error while updating category!",
+      );
+    }
+  };
+
+  const handleEditCategory = (category) => {
+    setEditId(category.id);
+    setName(category.name);
+    setShowForm(true);
+  };
+
+  const handleDeleteCategory = async (id) => {
+    try {
+      await API.delete(`/categories/${id}`);
+
+      setMessage("");
+      fetchCategories();
+    } catch (error) {
+      setMessage(
+        error.response?.data?.message || "Error while deleting category!",
+      );
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
@@ -68,6 +110,7 @@ function Categories() {
           <a href="/products">Products</a>
           <a href="/categories">Categories</a>
           <a href="/suppliers">Suppliers</a>
+          <a href="/stock-batches">Stock Batches</a>
           <a href="/expiry-management">Expiry Management</a>
         </nav>
 
@@ -81,14 +124,21 @@ function Categories() {
 
         <button
           className="add-product-btn"
-          onClick={() => setShowForm(!showForm)}
+          onClick={() => {
+            setEditId(null);
+            setName("");
+            setShowForm(!showForm);
+          }}
         >
           + Add Category
         </button>
 
         {showForm && (
-          <form className="product-form" onSubmit={handleAddCategory}>
-            <h2>Add New Category</h2>
+          <form
+            className="product-form"
+            onSubmit={editId ? handleUpdateCategory : handleAddCategory}
+          >
+            <h2>{editId ? "Edit Category" : "Add New Category"}</h2>
 
             <input
               type="text"
@@ -97,7 +147,9 @@ function Categories() {
               onChange={(e) => setName(e.target.value)}
               required
             />
-            <button type="submit">Save Category</button>
+            <button type="submit">
+              {editId ? "Update Category" : "Save Category"}
+            </button>
           </form>
         )}
 
@@ -111,6 +163,7 @@ function Categories() {
               <tr>
                 <th>ID</th>
                 <th>Name</th>
+                <th>Actions</th>
               </tr>
             </thead>
 
@@ -119,6 +172,15 @@ function Categories() {
                 <tr key={category.id}>
                   <td>{category.id}</td>
                   <td>{category.name}</td>
+                  <td>
+                    <button onClick={() => handleEditCategory(category)}>
+                      Edit
+                    </button>
+
+                    <button onClick={() => handleDeleteCategory(category.id)}>
+                      Delete
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
